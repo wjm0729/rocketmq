@@ -19,6 +19,7 @@ package org.apache.rocketmq.store.schedule;
 
 import org.apache.rocketmq.common.BrokerConfig;
 import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.store.*;
@@ -50,11 +51,11 @@ public class ScheduleMessageServiceTest {
      * t
      * defaultMessageDelayLevel = "1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h"
      */
-    String testMessageDelayLevel = "5s 8s";
+    String testMessageDelayLevel = "1s 2s 3s 4s 5s 10s 30s";
     /**
      * choose delay level
      */
-    int delayLevel = 2;
+    int delayLevel = 1;
 
     private static final String storePath = System.getProperty("user.home") + File.separator + "schedule_test#" + UUID.randomUUID();
     private static final int commitLogFileSize = 1024;
@@ -113,7 +114,9 @@ public class ScheduleMessageServiceTest {
     @Test
     public void deliverDelayedMessageTimerTaskTest() throws Exception {
         MessageExtBrokerInner msg = buildMessage();
-        int realQueueId = msg.getQueueId();
+
+        int realQueueId = delayLevel - 1;
+
         // set delayLevel,and send delay message
         msg.setDelayTimeLevel(delayLevel);
         PutMessageResult result = messageStore.putMessage(msg);
@@ -141,7 +144,6 @@ public class ScheduleMessageServiceTest {
         // now,found the message
         assertThat(messageResult.getStatus()).isEqualTo(GetMessageStatus.FOUND);
 
-
         // get the message body
         ByteBuffer byteBuffer = ByteBuffer.allocate(messageResult.getBufferTotalSize());
         List<ByteBuffer> byteBufferList = messageResult.getMessageBufferList();
@@ -160,7 +162,33 @@ public class ScheduleMessageServiceTest {
 
         // add mapFile release
         messageResult.release();
+    }
 
+    @Test
+    public void deliverDelayedMessageTimerTaskTest2() throws Exception {
+        // 延迟15秒, 不在预设等级里面
+        long delayMillis = TimeUnit.SECONDS.toMillis(45);
+        System.err.println("delaySeconds: " + (delayMillis / 1000L));
+        System.err.println("delayLevel: " + testMessageDelayLevel);
+
+        for(int i = 0; i<100; i++) {
+            MessageExtBrokerInner msg = buildMessage();
+            msg.getProperties().put(MessageConst.PROPERTY_REAL_PUB_TIME, String.valueOf(System.currentTimeMillis() + delayMillis));
+            delayLevel = scheduleMessageService.getMaxDelayLevelByMillis(delayMillis);
+
+            // set delayLevel,and send delay message
+            msg.setDelayTimeLevel(delayLevel);
+
+            PutMessageResult result = messageStore.putMessage(msg);
+            assertThat(result.isOk()).isTrue();
+        }
+
+        // and wait offsetTable
+        TimeUnit.SECONDS.sleep(delayMillis + 3000);
+        scheduleMessageService.buildRunningStats(new HashMap<String, String>());
+
+        //  method will wait 10s,so I run it by myself
+        scheduleMessageService.persist();
     }
 
     /**
@@ -184,7 +212,6 @@ public class ScheduleMessageServiceTest {
     private GetMessageResult getMessage(int queueId, Long offset) {
         return messageStore.getMessage(messageGroup, topic,
                 queueId, offset, 1, null);
-
     }
 
 
@@ -217,6 +244,10 @@ public class ScheduleMessageServiceTest {
         @Override
         public void arriving(String topic, int queueId, long logicOffset, long tagsCode, long msgStoreTime,
                              byte[] filterBitMap, Map<String, String> properties) {
+
+            long now = System.currentTimeMillis();
+            long exec = Long.parseLong(properties.get(MessageConst.PROPERTY_REAL_PUB_TIME));
+            System.err.println(String.format("%s %s remain %s", topic, queueId, exec - now));
         }
     }
 

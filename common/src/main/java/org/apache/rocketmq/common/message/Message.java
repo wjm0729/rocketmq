@@ -149,6 +149,14 @@ public class Message implements Serializable {
         this.putProperty(MessageConst.PROPERTY_DELAY_TIME_LEVEL, String.valueOf(level));
     }
 
+    public long getPubTime() {
+        String t = this.getProperty(MessageConst.PROPERTY_REAL_PUB_TIME);
+        if (t != null) {
+            return Long.parseLong(t);
+        }
+        return 0;
+    }
+
     public boolean isWaitStoreMsgOK() {
         String result = this.getProperty(MessageConst.PROPERTY_WAIT_STORE_MSG_OK);
         if (null == result)
