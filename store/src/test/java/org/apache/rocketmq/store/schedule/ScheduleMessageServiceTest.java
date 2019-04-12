@@ -115,7 +115,7 @@ public class ScheduleMessageServiceTest {
     public void deliverDelayedMessageTimerTaskTest() throws Exception {
         MessageExtBrokerInner msg = buildMessage();
 
-        int realQueueId = delayLevel - 1;
+        int realQueueId = 0;
 
         // set delayLevel,and send delay message
         msg.setDelayTimeLevel(delayLevel);
@@ -165,30 +165,63 @@ public class ScheduleMessageServiceTest {
     }
 
     @Test
-    public void deliverDelayedMessageTimerTaskTest2() throws Exception {
-        // 延迟15秒, 不在预设等级里面
-        long delayMillis = TimeUnit.SECONDS.toMillis(45);
-        System.err.println("delaySeconds: " + (delayMillis / 1000L));
-        System.err.println("delayLevel: " + testMessageDelayLevel);
+    public void randomDelayTaskTest() throws Exception {
+        MessageExtBrokerInner msg = buildMessage();
 
-        for(int i = 0; i<100; i++) {
-            MessageExtBrokerInner msg = buildMessage();
-            msg.getProperties().put(MessageConst.PROPERTY_REAL_PUB_TIME, String.valueOf(System.currentTimeMillis() + delayMillis));
-            delayLevel = scheduleMessageService.getMaxDelayLevelByMillis(delayMillis);
+        // testMessageDelayLevel = "1s 2s 3s 4s 5s 10s 30s";
+        // 7s is not in defined delayLevel
+        long delayMillis = TimeUnit.SECONDS.toMillis(7);
 
-            // set delayLevel,and send delay message
-            msg.setDelayTimeLevel(delayLevel);
+        // real pub time
+        msg.putUserProperty(MessageConst.PROPERTY_REAL_PUB_TIME, String.valueOf(System.currentTimeMillis() + delayMillis));
+        msg.setDelayTimeLevel(scheduleMessageService.getMaxDelayLevelByMillis(delayMillis));
 
-            PutMessageResult result = messageStore.putMessage(msg);
-            assertThat(result.isOk()).isTrue();
+        PutMessageResult result = messageStore.putMessage(msg);
+        assertThat(result.isOk()).isTrue();
+
+        int queueId = msg.getDelayTimeLevel() - 1;
+        Long offset = result.getAppendMessageResult().getLogicsOffset();
+
+        TimeUnit.SECONDS.sleep(4);
+
+        // 4s after in 5s's queue
+        GetMessageResult messageResult = messageStore.getMessage(messageGroup, ScheduleMessageService.SCHEDULE_TOPIC,
+                queueId, offset, 1, null);
+        assertThat(messageResult.getStatus()).isEqualTo(GetMessageStatus.FOUND);
+
+        // now real topic is empty
+        long count = messageStore.getMessageTotalInQueue(topic, 0);
+        assertThat(count).isEqualTo(0);
+
+        TimeUnit.SECONDS.sleep(8);
+
+        // 8s after msg will be find with real topic
+        count = messageStore.getMessageTotalInQueue(topic, 0);
+        assertThat(count).isEqualTo(1);
+
+        // only one msg in queue
+        // so queueId = 0 and offset = 0
+        messageResult = getMessage(0, 0L);
+        assertThat(messageResult.getStatus()).isEqualTo(GetMessageStatus.FOUND);
+
+        // get the message body
+        ByteBuffer byteBuffer = ByteBuffer.allocate(messageResult.getBufferTotalSize());
+        List<ByteBuffer> byteBufferList = messageResult.getMessageBufferList();
+        for (ByteBuffer bb : byteBufferList) {
+            byteBuffer.put(bb);
         }
 
-        // and wait offsetTable
-        TimeUnit.SECONDS.sleep(delayMillis + 3000);
-        scheduleMessageService.buildRunningStats(new HashMap<String, String>());
+        // warp and decode the message
+        byteBuffer = ByteBuffer.wrap(byteBuffer.array());
+        List<MessageExt> msgList = MessageDecoder.decodes(byteBuffer);
+        String retryMsg = new String(msgList.get(0).getBody());
+        assertThat(sendMessage).isEqualTo(retryMsg);
 
         //  method will wait 10s,so I run it by myself
         scheduleMessageService.persist();
+
+        // add mapFile release
+        messageResult.release();
     }
 
     /**
@@ -239,17 +272,10 @@ public class ScheduleMessageServiceTest {
         return msg;
     }
 
-
     private class MyMessageArrivingListener implements MessageArrivingListener {
         @Override
         public void arriving(String topic, int queueId, long logicOffset, long tagsCode, long msgStoreTime,
                              byte[] filterBitMap, Map<String, String> properties) {
-
-            long now = System.currentTimeMillis();
-            long exec = Long.parseLong(properties.get(MessageConst.PROPERTY_REAL_PUB_TIME));
-            System.err.println(String.format("%s %s remain %s", topic, queueId, exec - now));
         }
     }
-
-
 }

@@ -113,7 +113,7 @@ public class ScheduleMessageService extends ConfigManager {
     public void start() {
         if (started.compareAndSet(false, true)) {
 //            this.timer = new Timer("ScheduleMessageTimerThread", true);
-            this.timer = new ScheduledThreadPoolExecutor(3,
+            this.timer = new ScheduledThreadPoolExecutor(1,
                     new ThreadFactoryImpl("ScheduleMessageTimerThread", true),
                     new RejectedExecutionHandler() {
 
@@ -257,10 +257,16 @@ public class ScheduleMessageService extends ConfigManager {
     class DeliverDelayedMessageTimerTask implements Runnable {
         private final int delayLevel;
         private final long offset;
+        private final long delayCheckMillis;
 
         public DeliverDelayedMessageTimerTask(int delayLevel, long offset) {
             this.delayLevel = delayLevel;
             this.offset = offset;
+            if(delayLevel == 1) {
+                delayCheckMillis = 10;
+            } else {
+                delayCheckMillis = 100;
+            }
         }
 
         @Override
@@ -437,7 +443,7 @@ public class ScheduleMessageService extends ConfigManager {
 
                         nextOffset = offset + (i / ConsumeQueue.CQ_STORE_UNIT_SIZE);
                         ScheduleMessageService.this.timer.schedule(new DeliverDelayedMessageTimerTask(
-                            this.delayLevel, nextOffset), DELAY_FOR_A_WHILE, TimeUnit.MILLISECONDS);
+                            this.delayLevel, nextOffset), delayCheckMillis, TimeUnit.MILLISECONDS);
                         ScheduleMessageService.this.updateOffset(this.delayLevel, nextOffset);
                         return;
                     } finally {
@@ -457,7 +463,7 @@ public class ScheduleMessageService extends ConfigManager {
             } // end of if (cq != null)
 
             ScheduleMessageService.this.timer.schedule(new DeliverDelayedMessageTimerTask(this.delayLevel,
-                failScheduleOffset), DELAY_FOR_A_WHILE, TimeUnit.MILLISECONDS);
+                failScheduleOffset), delayCheckMillis, TimeUnit.MILLISECONDS);
         }
 
         private MessageExtBrokerInner messageTimeup(MessageExt msgExt) {
