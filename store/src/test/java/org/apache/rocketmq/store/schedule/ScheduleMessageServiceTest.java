@@ -46,12 +46,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class ScheduleMessageServiceTest {
 
+    String testMessageDelayLevel = "1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h";
 
-    /**
-     * t
-     * defaultMessageDelayLevel = "1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h"
-     */
-    String testMessageDelayLevel = "1s 2s 3s 4s 5s 10s 30s";
     /**
      * choose delay level
      */
@@ -164,12 +160,24 @@ public class ScheduleMessageServiceTest {
         messageResult.release();
     }
 
+    /**
+     * by jiangmin.wu wjm0729@aliyun.com
+     */
     @Test
     public void randomDelayTaskTest() throws Exception {
         MessageExtBrokerInner msg = buildMessage();
 
-        // testMessageDelayLevel = "1s 2s 3s 4s 5s 10s 30s";
-        // 7s is not in defined delayLevel
+        // 默认延迟等级
+        // 1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h
+
+        // 最好改为下面的形式
+        // 1s 2s 3s 4s 5s 6s 7s 8s 9s 10s 20s 30s 40s 50s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 40m 50m 1h 2h 4h 8h 16h
+
+        // 修改方法
+        // broker.conf 配置文件增加
+        // messageDelayLevel = 1s 2s 3s 4s 5s 6s 7s 8s 9s 10s 20s 30s 40s 50s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 40m 50m 1h 2h 4h 8h 16h
+
+        // 7s is not defined
         long delayMillis = TimeUnit.SECONDS.toMillis(7);
 
         // real pub time
